@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net"
+
 	tea "github.com/charmbracelet/bubbletea"
 	// "github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"
@@ -15,13 +17,18 @@ import (
 type Racer struct {
     to_type string
     input string
-    typed uint
+    typed int
+
     start_time time.Time
     end_time time.Time
+
+    con * net.Conn
+    net_input []byte 
+
     err error
 }
 
-func (m * Racer) nth_utf8_char(n uint) string {
+func (m * Racer) nth_utf8_char(n int) string {
     for i, c := range m.to_type {
         if i == int(n) {
             return string(c)
@@ -31,7 +38,7 @@ func (m * Racer) nth_utf8_char(n uint) string {
     return ""
 }
 
-func (m * Racer) from_utf8_char(n uint) string {
+func (m * Racer) from_utf8_char(n int) string {
     r := ""
     for i, c := range m.to_type {
         if i < int(n) {
@@ -47,6 +54,7 @@ func (m Racer) Init() tea.Cmd {
 }
 
 func (m Racer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    out := ""
     m.err = nil
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -63,10 +71,12 @@ func (m Racer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         // if next char to type is an '\n' auto insert it
         if m.nth_utf8_char(m.typed) == "\n" {
             m.input += "¬"
+            out += "¬"
             m.typed ++ 
         }
 
         // log.Println(m.nth_utf8_char(m.typed) + "e depois '" + m.nth_utf8_char(m.typed + 1) + "'" + " e entao '" + m.nth_utf8_char(m.typed + 2) + "'")
+        // log.Printf("have %s, need %s", msg.String(), m.nth_utf8_char(m.typed))
         
         if msg.String() != m.nth_utf8_char(m.typed) {
             m.err = errors.New("Typed wrong char")
@@ -78,15 +88,23 @@ func (m Racer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
         }
 
         m.input += msg.String()
+        out += msg.String()
         m.typed++
 
         if m.nth_utf8_char(m.typed) == "" {
             m.typed++
         }
         
-        if m.typed >= uint(len(m.to_type)) {
+        if m.typed >= len(m.to_type) {
             m.end_time = time.Now()
             return m, tea.Quit
+        }
+        
+        if out != ""  {
+            _, err := (*m.con).Write([]byte(out))
+            if err != nil {
+                log.Fatal(err)
+            }
         }
 
         return m, nil
@@ -94,7 +112,12 @@ func (m Racer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case error:
 		log.Fatal(msg)
 		return m, nil
+
+    case string:
+        m.input += msg
+        m.typed += len(msg)
 	}
+
     return m, nil
 
 }

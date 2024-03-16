@@ -3,42 +3,64 @@ package main
 import (
 	"log"
 	"time"
+    "net"
 
-	txtInput "github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 
-func initialModel() Racer {
-    tt := RandomSampleText(1, "ptbr")
-    // tt := "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
-    t := ""
-    i := 0
-    for _, c := range tt {
-        if i == 100 {
-            t += "\n"
-            i = 0
-        }
-        t += string(c)
-        i++
+func initialModel() Game {
+    con, err := net.Dial("tcp", "localhost:3000")
+    if err != nil {
+        log.Fatal(err)
     }
+    buf := make([]byte, 512)
+    i, err := con.Read(buf)
+    if err != nil {
+        log.Fatalf("Couldn't get text from server: %s\n", err)
+    }
+    t := string(buf[:i])
 
-    in := txtInput.New()
-    in.Focus()
-    in.CharLimit = len(t)
-    in.Width = len(t)
-
-    return Racer{
+    r1 := Racer{
         to_type: t,
-        input: in.Value(),
+        input: "",
         typed: 0,
         start_time: time.Time{},
         end_time: time.Time{},
+        con: &con,
+    }
+
+    r2 := Racer {
+        to_type: t,
+        input: "",
+        typed:  0,
+        start_time: time.Time{},
+        end_time: time.Time{},
+        con: nil,
+    }
+
+    return Game{
+        player: r1,
+        opponent: r2,
     }
 }
 
 func main() {
-	p := tea.NewProgram(initialModel())
+    m := initialModel()
+	p := tea.NewProgram(m)
+
+    go func () {
+        buf := make([]byte, 512)
+        for {
+            i, err := (*m.player.con).Read(buf)
+            if err != nil {
+                log.Fatalf("failed to read: %v\n", err)
+            }
+            send := buf[:i]
+            p.Send(string(send))
+        }
+    } ()
+
 	if _, err := p.Run(); err != nil {
 		log.Fatal(err)
 	}
